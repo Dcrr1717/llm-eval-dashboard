@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 results/
 .streamlit/secrets.toml
+.venv/
+.pytest_cache/
