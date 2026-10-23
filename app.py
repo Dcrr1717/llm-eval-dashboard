@@ -55,7 +55,7 @@ def problem_bank() -> list[dict]:
 
 
 def to_jsonl(df: pd.DataFrame) -> bytes:
-    """Serialize rows back to the harness JSONL format (drops display-only columns)."""
+    """Serialize rows back to the results JSONL format (drops display-only columns)."""
     cols = [c for c in df.columns if c not in {"question", "source"}]
     records = df[cols].to_dict(orient="records")
     clean = [{k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in r.items()} for r in records]
@@ -72,7 +72,7 @@ with st.sidebar:
         base = load_sample().assign(source="sample")
         st.caption(f"`sample_results.jsonl` — synthetic, {len(base)} calls.")
     else:
-        upload = st.file_uploader("Upload resultados.jsonl", type=["jsonl", "json", "txt"])
+        upload = st.file_uploader("Upload results.jsonl", type=["jsonl", "json", "txt"])
         if upload is not None:
             try:
                 base = load_upload(upload.getvalue()).assign(source="upload")
@@ -81,12 +81,12 @@ with st.sidebar:
                 st.error(f"Could not read that file: {exc}")
         with st.expander("Expected format"):
             st.code(
-                '{"id":"ALG1","topic":"algebra","difficulty":"easy","modelo":"claude-haiku-5-5",'
-                '"correcto":true,"costo":0.0004,"tok_in":120,"tok_out":300,"seg":1.1}',
+                '{"id":"ALG1","topic":"algebra","difficulty":"easy","model":"claude-haiku-5-5",'
+                '"correct":true,"cost":0.0004,"tok_in":120,"tok_out":300,"latency_s":1.1}',
                 language="json",
             )
-            st.caption("Required: id, modelo, correcto, costo. Optional: topic, difficulty, tok_in, "
-                       "tok_out, seg, esperado (expected), extraido (extracted).")
+            st.caption("Required: id, model, correct, cost. Optional: topic, difficulty, tok_in, "
+                       "tok_out, latency_s, expected, extracted.")
 
     live_rows = st.session_state["live_rows"]
     include_live = False
@@ -108,14 +108,14 @@ data = pd.concat(frames, ignore_index=True)
 
 with st.sidebar:
     st.header("Filter")
-    all_models = charts.model_order(data["modelo"].unique().tolist())
+    all_models = charts.model_order(data["model"].unique().tolist())
     chosen = st.multiselect("Models", all_models, default=all_models)
     log_x = st.toggle("Log-scale cost axis", value=True, help="Model prices span ~100x; log scale keeps all points readable.")
     st.download_button(
-        "Download current data (JSONL)", to_jsonl(data), file_name="resultados.jsonl", mime="application/json"
+        "Download current data (JSONL)", to_jsonl(data), file_name="results.jsonl", mime="application/json"
     )
 
-df = data[data["modelo"].isin(chosen)]
+df = data[data["model"].isin(chosen)]
 
 tab_names = ["📈 Dashboard", "🔎 Drill-down"]
 if LIVE_EVAL_ENABLED:
@@ -138,7 +138,7 @@ with tab_dash:
             for col, (_, row) in zip(cols, summary.iloc[start : start + per_row].iterrows()):
                 with col.container(border=True):
                     badge = " ⭐" if row["pareto"] else ""
-                    st.markdown(f"**{row['modelo']}**{badge}")
+                    st.markdown(f"**{row['model']}**{badge}")
                     st.metric("Accuracy", f"{row['accuracy']:.0%}", help=(
                         f"{row['correct']}/{row['n']} correct · 95% CI {row['acc_lo']:.0%}–{row['acc_hi']:.0%}"))
                     latency = "—" if pd.isna(row["mean_latency"]) else f"{row['mean_latency']:.1f}s"
@@ -175,7 +175,7 @@ with tab_dash:
                 hide_index=True,
                 width="stretch",
                 column_config={
-                    "modelo": "Model",
+                    "model": "Model",
                     "accuracy": st.column_config.NumberColumn("Accuracy", format="percent"),
                     "total_cost": st.column_config.NumberColumn("Total cost", format="$%.4f"),
                     "cost_per_problem": st.column_config.NumberColumn("Cost/problem", format="$%.5f"),
@@ -188,45 +188,45 @@ with tab_dash:
 with tab_drill:
     questions = {p["id"]: p["question"] for p in problem_bank()}
     f1, f2, f3, f4 = st.columns([2, 2, 2, 1.4])
-    models_f = f1.multiselect("Model", charts.model_order(df["modelo"].unique().tolist()), key="dd_model")
+    models_f = f1.multiselect("Model", charts.model_order(df["model"].unique().tolist()), key="dd_model")
     topics_f = f2.multiselect("Topic", sorted(df["topic"].unique()), key="dd_topic")
     diffs_f = f3.multiselect("Difficulty", metrics.dimension_order(df["difficulty"], "difficulty"), key="dd_diff")
     outcome = f4.selectbox("Outcome", ["All", "Correct", "Incorrect"], key="dd_outcome")
 
     view = df.copy()
     if models_f:
-        view = view[view["modelo"].isin(models_f)]
+        view = view[view["model"].isin(models_f)]
     if topics_f:
         view = view[view["topic"].isin(topics_f)]
     if diffs_f:
         view = view[view["difficulty"].isin(diffs_f)]
     if outcome != "All":
-        view = view[view["correcto"] == (outcome == "Correct")]
+        view = view[view["correct"] == (outcome == "Correct")]
 
     view = view.assign(
-        result=view["correcto"].map({True: "✅ correct", False: "❌ incorrect"}),
+        result=view["correct"].map({True: "✅ correct", False: "❌ incorrect"}),
         question=view["id"].map(questions),
     )
-    st.caption(f"{len(view)} of {len(df)} calls · accuracy {view['correcto'].mean():.0%}" if len(view) else "No calls match.")
+    st.caption(f"{len(view)} of {len(df)} calls · accuracy {view['correct'].mean():.0%}" if len(view) else "No calls match.")
     st.dataframe(
-        view[["id", "modelo", "topic", "difficulty", "question", "esperado", "extraido", "result",
-              "costo", "tok_in", "tok_out", "seg"]],
+        view[["id", "model", "topic", "difficulty", "question", "expected", "extracted", "result",
+              "cost", "tok_in", "tok_out", "latency_s"]],
         hide_index=True,
         width="stretch",
         height=420,
         column_config={
             "id": "Problem",
-            "modelo": "Model",
+            "model": "Model",
             "topic": "Topic",
             "difficulty": "Difficulty",
             "question": st.column_config.TextColumn("Question", width="medium"),
-            "esperado": "Expected",
-            "extraido": "Extracted",
+            "expected": "Expected",
+            "extracted": "Extracted",
             "result": "Result",
-            "costo": st.column_config.NumberColumn("Cost", format="$%.5f"),
+            "cost": st.column_config.NumberColumn("Cost", format="$%.5f"),
             "tok_in": "Tokens in",
             "tok_out": "Tokens out",
-            "seg": st.column_config.NumberColumn("Latency (s)", format="%.1f"),
+            "latency_s": st.column_config.NumberColumn("Latency (s)", format="%.1f"),
         },
     )
     st.download_button("Download filtered rows (JSONL)", to_jsonl(view.drop(columns=["result"])),
@@ -318,11 +318,11 @@ if LIVE_EVAL_ENABLED:
         if last:
             rows, errors = last["rows"], last["errors"]
             if rows:
-                spent = sum(r["costo"] for r in rows)
-                acc = sum(r["correcto"] for r in rows) / len(rows)
+                spent = sum(r["cost"] for r in rows)
+                acc = sum(r["correct"] for r in rows) / len(rows)
                 st.success(f"Last run: {len(rows)} call(s), accuracy {acc:.0%}, spent \\${spent:.4f}. "
                            "Results are added to the dashboard (see the sidebar toggle).")
-                st.dataframe(pd.DataFrame(rows)[["id", "modelo", "esperado", "extraido", "correcto", "costo", "seg",
+                st.dataframe(pd.DataFrame(rows)[["id", "model", "expected", "extracted", "correct", "cost", "latency_s",
                                                   "stop_reason"]], hide_index=True, width="stretch")
             for err in errors:
                 st.error(err)

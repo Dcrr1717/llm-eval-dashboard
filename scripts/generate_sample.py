@@ -76,20 +76,20 @@ def main() -> None:
             if not correct and rng.random() < 0.12:
                 extracted = None  # ran out of budget / no parseable final answer
             cost = tok_in * pin / 1e6 + tok_out * pout / 1e6
-            seg = overhead + tok_out / tps * rng.uniform(0.85, 1.2)
+            latency = overhead + tok_out / tps * rng.uniform(0.85, 1.2)
             rows.append(
                 {
                     "id": p["id"],
                     "topic": p["topic"],
                     "difficulty": p["difficulty"],
-                    "modelo": model,
-                    "correcto": correct,
-                    "costo": round(cost, 6),
+                    "model": model,
+                    "correct": correct,
+                    "cost": round(cost, 6),
                     "tok_in": tok_in,
                     "tok_out": tok_out,
-                    "seg": round(seg, 2),
-                    "esperado": p["answer"],
-                    "extraido": extracted,
+                    "latency_s": round(latency, 2),
+                    "expected": p["answer"],
+                    "extracted": extracted,
                 }
             )
     out = ROOT / "sample_results.jsonl"

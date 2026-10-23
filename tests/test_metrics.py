@@ -19,7 +19,7 @@ def frame(rows: list[dict]) -> pd.DataFrame:
 
 
 def row(model: str, correct: bool, cost: float, **kw) -> dict:
-    return {"id": kw.pop("id", "P1"), "modelo": model, "correcto": correct, "costo": cost, **kw}
+    return {"id": kw.pop("id", "P1"), "model": model, "correct": correct, "cost": cost, **kw}
 
 
 # ---------------------------------------------------------------- loading
@@ -28,37 +28,42 @@ def row(model: str, correct: bool, cost: float, **kw) -> dict:
 def test_sample_file_loads_with_expected_schema():
     df = metrics.load_results(ROOT / "sample_results.jsonl")
     assert len(df) == 125
-    assert set(df["modelo"]) == {
+    assert set(df["model"]) == {
         "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"
     }
-    assert df["correcto"].dtype == bool
-    assert (df["costo"] > 0).all()
+    assert df["correct"].dtype == bool
+    assert (df["cost"] > 0).all()
     assert set(df["difficulty"]) == {"easy", "medium", "hard"}
 
 
 def test_load_from_bytes_upload_with_aliases_and_defaults():
+    # Second record uses the legacy Spanish keys from the original harness.
     text = (
         '{"id":"A","model":"m1","correct":"true","cost":"0.5"}\n'
         "\n"
-        '{"id":"B","modelo":"m1","correcto":0,"costo":0.25,"topic":"algebra","difficulty":"Hard"}\n'
+        '{"id":"B","modelo":"m1","correcto":0,"costo":0.25,"topic":"algebra","difficulty":"Hard",'
+        '"seg":2.5,"esperado":"4","extraido":"5"}\n'
     )
     df = metrics.load_results(io.BytesIO(text.encode()))
-    assert list(df["correcto"]) == [True, False]
-    assert list(df["costo"]) == [0.5, 0.25]
+    assert list(df["correct"]) == [True, False]
+    assert list(df["cost"]) == [0.5, 0.25]
     assert list(df["topic"]) == ["unknown", "algebra"]
     assert list(df["difficulty"]) == ["unknown", "hard"]
     assert list(df["tok_in"]) == [0, 0]
-    assert math.isnan(df["seg"].iloc[0])
+    assert math.isnan(df["latency_s"].iloc[0])
+    assert df["latency_s"].iloc[1] == 2.5
+    assert list(df["expected"]) == [None, "4"]
+    assert list(df["extracted"]) == [None, "5"]
 
 
 def test_bad_json_reports_line_number():
     with pytest.raises(metrics.ResultsFormatError, match="line 2"):
-        metrics.load_results(io.StringIO('{"id":"A","modelo":"m","correcto":true,"costo":1}\n{oops\n'))
+        metrics.load_results(io.StringIO('{"id":"A","model":"m","correct":true,"cost":1}\n{oops\n'))
 
 
 def test_missing_required_field_is_reported():
-    with pytest.raises(metrics.ResultsFormatError, match="costo"):
-        frame([{"id": "A", "modelo": "m", "correcto": True}])
+    with pytest.raises(metrics.ResultsFormatError, match="cost"):
+        frame([{"id": "A", "model": "m", "correct": True}])
 
 
 def test_empty_file_is_rejected():
@@ -124,7 +129,7 @@ def test_pareto_length_mismatch():
 
 def test_sample_frontier_tells_the_intended_story():
     summary = metrics.model_summary(metrics.load_results(ROOT / "sample_results.jsonl"))
-    frontier = summary[summary["pareto"]]["modelo"].tolist()
+    frontier = summary[summary["pareto"]]["model"].tolist()
     assert frontier == ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 
 
@@ -134,13 +139,13 @@ def test_sample_frontier_tells_the_intended_story():
 def test_model_summary_numbers():
     df = frame(
         [
-            row("cheap", True, 0.01, seg=1.0),
-            row("cheap", False, 0.01, seg=3.0),
-            row("pricey", True, 0.10, seg=5.0),
-            row("pricey", True, 0.10, seg=7.0),
+            row("cheap", True, 0.01, latency_s=1.0),
+            row("cheap", False, 0.01, latency_s=3.0),
+            row("pricey", True, 0.10, latency_s=5.0),
+            row("pricey", True, 0.10, latency_s=7.0),
         ]
     )
-    s = metrics.model_summary(df).set_index("modelo")
+    s = metrics.model_summary(df).set_index("model")
     assert s.loc["cheap", "accuracy"] == 0.5
     assert s.loc["cheap", "total_cost"] == pytest.approx(0.02)
     assert s.loc["cheap", "cost_per_problem"] == pytest.approx(0.01)
@@ -149,7 +154,7 @@ def test_model_summary_numbers():
     assert s.loc["pricey", "n"] == 2
     assert bool(s.loc["cheap", "pareto"]) and bool(s.loc["pricey", "pareto"])
     # sorted cheapest first
-    assert metrics.model_summary(df)["modelo"].tolist() == ["cheap", "pricey"]
+    assert metrics.model_summary(df)["model"].tolist() == ["cheap", "pricey"]
 
 
 def test_model_summary_latency_missing():
@@ -178,7 +183,7 @@ def test_accuracy_by_dimension():
             row("n", True, 0.1, id="c", difficulty="hard"),
         ]
     )
-    acc = metrics.accuracy_by(df, "difficulty").set_index(["modelo", "difficulty"])
+    acc = metrics.accuracy_by(df, "difficulty").set_index(["model", "difficulty"])
     assert acc.loc[("m", "easy"), "accuracy"] == 1.0
     assert acc.loc[("m", "easy"), "n"] == 2
     assert acc.loc[("m", "hard"), "accuracy"] == 0.0
@@ -204,7 +209,7 @@ def test_split_cost_sums_to_recorded_cost_and_uses_prices():
         ]
     )
     split = metrics.split_cost(df)
-    assert (split["cost_in"] + split["cost_out"]).tolist() == pytest.approx(df["costo"].tolist())
+    assert (split["cost_in"] + split["cost_out"]).tolist() == pytest.approx(df["cost"].tolist())
     assert split.loc[0, "cost_in"] == pytest.approx(0.004)
     assert split.loc[0, "cost_out"] == pytest.approx(0.020)
     assert split.loc[1, "cost_in"] == pytest.approx(0.1)
@@ -221,8 +226,8 @@ def test_split_cost_scales_to_recorded_cost():
 
 def test_cost_breakdown_totals():
     df = metrics.load_results(ROOT / "sample_results.jsonl")
-    bd = metrics.cost_breakdown(df).set_index("modelo")
-    totals = df.groupby("modelo")["costo"].sum()
+    bd = metrics.cost_breakdown(df).set_index("model")
+    totals = df.groupby("model")["cost"].sum()
     for model, total in totals.items():
         assert bd.loc[model, "cost_in"] + bd.loc[model, "cost_out"] == pytest.approx(total)
 

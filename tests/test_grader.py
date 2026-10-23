@@ -98,7 +98,7 @@ def test_bundled_answers_grade_as_correct_against_themselves():
 
 
 def test_sample_extracted_answers_agree_with_correct_flag():
-    # The synthetic data is internally consistent: the grader reproduces `correcto`.
+    # The synthetic data is internally consistent: the grader reproduces `correct`.
     for line in (ROOT / "sample_results.jsonl").read_text().splitlines():
         r = json.loads(line)
-        assert is_equivalent(r["extraido"], r["esperado"]) == r["correcto"], r
+        assert is_equivalent(r["extracted"], r["expected"]) == r["correct"], r

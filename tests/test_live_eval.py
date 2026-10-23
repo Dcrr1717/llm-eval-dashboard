@@ -66,21 +66,21 @@ def test_solve_one_builds_a_schema_row_and_sends_effort():
     assert sent["max_tokens"] == 2048
     assert "temperature" not in sent and "thinking" not in sent
 
-    assert row["correcto"] is True and row["extraido"] == "5"
+    assert row["correct"] is True and row["extracted"] == "5"
     # $0.10 / $0.50 per 1M tokens
-    assert row["costo"] == pytest.approx(120 * 0.10e-6 + 300 * 0.50e-6)
+    assert row["cost"] == pytest.approx(120 * 0.10e-6 + 300 * 0.50e-6)
     # The row is loadable by the dashboard.
     df = metrics.records_to_frame([row])
-    assert df.loc[0, "modelo"] == "claude-haiku-5-5"
+    assert df.loc[0, "model"] == "claude-haiku-5-5"
 
 
 def test_wrong_answer_and_refusal_are_incorrect():
     client = FakeClient(lambda kw: fake_response("ANSWER: 7"))
-    assert live_eval.solve_one(client, "claude-opus-5-5", BY_ID["ALG1"])["correcto"] is False
+    assert live_eval.solve_one(client, "claude-opus-5-5", BY_ID["ALG1"])["correct"] is False
 
     client = FakeClient(lambda kw: fake_response("ANSWER: 5", stop_reason="refusal"))
     row = live_eval.solve_one(client, "claude-opus-5-5", BY_ID["ALG1"])
-    assert row["correcto"] is False and row["extraido"] is None and row["stop_reason"] == "refusal"
+    assert row["correct"] is False and row["extracted"] is None and row["stop_reason"] == "refusal"
 
 
 def test_run_eval_covers_all_pairs_and_reports_progress():
@@ -90,7 +90,7 @@ def test_run_eval_covers_all_pairs_and_reports_progress():
         client, PROBLEMS[:3], ["claude-opus-5-5", "claude-haiku-5-5"], on_progress=lambda d, t, _: seen.append((d, t))
     )
     assert errors == []
-    assert len(rows) == 6 and all(r["correcto"] for r in rows)
+    assert len(rows) == 6 and all(r["correct"] for r in rows)
     assert seen[-1] == (6, 6)
 
 

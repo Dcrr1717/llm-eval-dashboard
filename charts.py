@@ -83,7 +83,7 @@ def pareto_chart(summary: pd.DataFrame, log_x: bool = True) -> go.Figure:
                 y=part["accuracy"],
                 mode="markers+text",
                 name=name,
-                text=part["modelo"],
+                text=part["model"],
                 # Dominated labels go below so models at similar cost do not collide.
                 textposition="top center" if is_frontier else "bottom center",
                 textfont=dict(color=TEXT_PRIMARY, size=12),
@@ -128,10 +128,10 @@ def pareto_chart(summary: pd.DataFrame, log_x: bool = True) -> go.Figure:
 def accuracy_bars(acc: pd.DataFrame, dimension: str) -> go.Figure:
     """Grouped bars: accuracy per value of `dimension`, one bar per model."""
     order = dimension_order(acc[dimension], dimension)
-    colors = model_colors(acc["modelo"].unique().tolist())
+    colors = model_colors(acc["model"].unique().tolist())
     fig = go.Figure()
-    for model in model_order(acc["modelo"].unique().tolist()):
-        part = acc[acc["modelo"] == model].set_index(dimension).reindex(order).reset_index()
+    for model in model_order(acc["model"].unique().tolist()):
+        part = acc[acc["model"] == model].set_index(dimension).reindex(order).reset_index()
         fig.add_trace(
             go.Bar(
                 x=part[dimension],
@@ -157,7 +157,7 @@ def cost_breakdown_chart(breakdown: pd.DataFrame) -> go.Figure:
         share = (data[col] / data["total"].where(data["total"] > 0)).fillna(0)
         fig.add_trace(
             go.Bar(
-                y=data["modelo"],
+                y=data["model"],
                 x=data[col],
                 name=name,
                 orientation="h",

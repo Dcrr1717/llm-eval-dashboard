@@ -19,7 +19,7 @@ Ingest results in this JSONL shape (one call per line), the format produced by a
 harness; include a `sample_results.jsonl` with realistic synthetic data so the dashboard renders
 with no API key:
 ```
-{"id":"ALG1","topic":"algebra","difficulty":"easy","modelo":"claude-haiku-5-5","correcto":true,"costo":0.0004,"tok_in":120,"tok_out":300,"seg":1.1}
+{"id":"ALG1","topic":"algebra","difficulty":"easy","model":"claude-haiku-5-5","correct":true,"cost":0.0004,"tok_in":120,"tok_out":300,"latency_s":1.1}
 ```
 
 ### Dashboard (app.py, Streamlit)
@@ -30,7 +30,7 @@ with no API key:
 - **Cost breakdown**: stacked bar of input vs output token cost per model.
 - **Drill-down table**: filter by model/topic/difficulty; show each problem, expected vs extracted
   answer, correct/incorrect, cost. 
-- **Upload / pick results**: let the user upload a `resultados.jsonl` or use the bundled sample.
+- **Upload / pick results**: let the user upload a `results.jsonl` or use the bundled sample.
 - Clean layout, sensible color use, works in light theme. Use plotly or altair for charts.
 
 ### Optional "Run eval" tab (uses the API)

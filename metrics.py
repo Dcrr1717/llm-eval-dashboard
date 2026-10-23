@@ -32,7 +32,7 @@ PRICES: dict[str, tuple[float, float]] = {
 # split for models missing from PRICES.
 DEFAULT_OUTPUT_TO_INPUT_RATIO = 5.0
 
-REQUIRED_COLUMNS = ("id", "modelo", "correcto", "costo")
+REQUIRED_COLUMNS = ("id", "model", "correct", "cost")
 
 # Optional columns and the default used when a record omits them.
 OPTIONAL_DEFAULTS: dict[str, object] = {
@@ -40,22 +40,24 @@ OPTIONAL_DEFAULTS: dict[str, object] = {
     "difficulty": "unknown",
     "tok_in": 0,
     "tok_out": 0,
-    "seg": float("nan"),
-    "esperado": None,
-    "extraido": None,
+    "latency_s": float("nan"),
+    "expected": None,
+    "extracted": None,
 }
 
-# English aliases accepted on input, mapped to the harness's canonical keys.
+# Alternative input keys, mapped to the canonical schema above. Includes the
+# legacy Spanish keys written by the original eval harness, so its result
+# files load unchanged.
 ALIASES = {
-    "model": "modelo",
-    "correct": "correcto",
-    "cost": "costo",
-    "latency": "seg",
-    "latency_s": "seg",
-    "expected": "esperado",
-    "extracted": "extraido",
+    "latency": "latency_s",
     "input_tokens": "tok_in",
     "output_tokens": "tok_out",
+    "modelo": "model",
+    "correcto": "correct",
+    "costo": "cost",
+    "seg": "latency_s",
+    "esperado": "expected",
+    "extraido": "extracted",
 }
 
 DIFFICULTY_ORDER = ["easy", "medium", "hard"]
@@ -66,7 +68,7 @@ class ResultsFormatError(ValueError):
 
 
 def _to_bool(value: object) -> bool:
-    """Coerce the `correcto` field, accepting bools, 0/1 and common strings."""
+    """Coerce the `correct` field, accepting bools, 0/1 and common strings."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
@@ -75,7 +77,7 @@ def _to_bool(value: object) -> bool:
         return True
     if isinstance(value, str) and value.strip().lower() in {"false", "0", "no", "n", "f", ""}:
         return False
-    raise ResultsFormatError(f"cannot interpret correcto={value!r} as a boolean")
+    raise ResultsFormatError(f"cannot interpret correct={value!r} as a boolean")
 
 
 def parse_jsonl(lines: Iterable[str]) -> list[dict]:
@@ -110,18 +112,20 @@ def records_to_frame(records: list[dict]) -> pd.DataFrame:
             df[col] = df[col].where(df[col].notna(), default)
 
     df["id"] = df["id"].astype(str)
-    df["modelo"] = df["modelo"].astype(str)
+    df["model"] = df["model"].astype(str)
     df["topic"] = df["topic"].astype(str)
     df["difficulty"] = df["difficulty"].astype(str).str.lower()
-    df["correcto"] = df["correcto"].map(_to_bool).astype(bool)
-    for col in ("costo", "tok_in", "tok_out", "seg"):
+    df["correct"] = df["correct"].map(_to_bool).astype(bool)
+    for col in ("cost", "tok_in", "tok_out", "latency_s"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
-    if df["costo"].isna().any():
-        raise ResultsFormatError("costo must be numeric on every row")
+    if df["cost"].isna().any():
+        raise ResultsFormatError("cost must be numeric on every row")
     df["tok_in"] = df["tok_in"].fillna(0).astype(int)
     df["tok_out"] = df["tok_out"].fillna(0).astype(int)
-    for col in ("esperado", "extraido"):
-        df[col] = df[col].map(lambda v: None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v))
+    for col in ("expected", "extracted"):
+        # object dtype keeps missing answers as None (pandas' string dtype would turn them into NaN)
+        values = [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v) for v in df[col]]
+        df[col] = pd.Series(values, index=df.index, dtype=object)
     return df
 
 
@@ -157,14 +161,14 @@ def model_summary(df: pd.DataFrame) -> pd.DataFrame:
     Returned sorted by cost per problem (cheapest first).
     """
     rows = []
-    for model, g in df.groupby("modelo", sort=False):
+    for model, g in df.groupby("model", sort=False):
         n = len(g)
-        k = int(g["correcto"].sum())
+        k = int(g["correct"].sum())
         lo, hi = wilson_interval(k, n)
-        total = float(g["costo"].sum())
+        total = float(g["cost"].sum())
         rows.append(
             {
-                "modelo": model,
+                "model": model,
                 "n": n,
                 "correct": k,
                 "accuracy": k / n,
@@ -172,12 +176,12 @@ def model_summary(df: pd.DataFrame) -> pd.DataFrame:
                 "acc_hi": hi,
                 "total_cost": total,
                 "cost_per_problem": total / n,
-                "mean_latency": float(g["seg"].mean()) if g["seg"].notna().any() else float("nan"),
+                "mean_latency": float(g["latency_s"].mean()) if g["latency_s"].notna().any() else float("nan"),
                 "tok_in": int(g["tok_in"].sum()),
                 "tok_out": int(g["tok_out"].sum()),
             }
         )
-    out = pd.DataFrame(rows).sort_values(["cost_per_problem", "modelo"]).reset_index(drop=True)
+    out = pd.DataFrame(rows).sort_values(["cost_per_problem", "model"]).reset_index(drop=True)
     out["pareto"] = pareto_mask(out["cost_per_problem"].tolist(), out["accuracy"].tolist())
     return out
 
@@ -205,7 +209,7 @@ def pareto_mask(costs: list[float], accuracies: list[float]) -> list[bool]:
 def accuracy_by(df: pd.DataFrame, dimension: str) -> pd.DataFrame:
     """Accuracy per (model, dimension value), e.g. dimension='difficulty' or 'topic'."""
     out = (
-        df.groupby(["modelo", dimension], sort=False)["correcto"]
+        df.groupby(["model", dimension], sort=False)["correct"]
         .agg(accuracy="mean", n="size", correct="sum")
         .reset_index()
     )
@@ -223,7 +227,7 @@ def dimension_order(values: Iterable[str], dimension: str) -> list[str]:
 
 
 def split_cost(df: pd.DataFrame) -> pd.DataFrame:
-    """Add `cost_in` / `cost_out` columns that always sum to the recorded `costo`.
+    """Add `cost_in` / `cost_out` columns that always sum to the recorded `cost`.
 
     The share of each row's cost that came from input vs output tokens is
     taken from the model's list prices (or a 1:5 ratio for unknown models) and
@@ -232,27 +236,27 @@ def split_cost(df: pd.DataFrame) -> pd.DataFrame:
     without token counts are attributed entirely to output.
     """
     out = df.copy()
-    pin = out["modelo"].map(lambda m: PRICES.get(m, (1.0, DEFAULT_OUTPUT_TO_INPUT_RATIO))[0])
-    pout = out["modelo"].map(lambda m: PRICES.get(m, (1.0, DEFAULT_OUTPUT_TO_INPUT_RATIO))[1])
+    pin = out["model"].map(lambda m: PRICES.get(m, (1.0, DEFAULT_OUTPUT_TO_INPUT_RATIO))[0])
+    pout = out["model"].map(lambda m: PRICES.get(m, (1.0, DEFAULT_OUTPUT_TO_INPUT_RATIO))[1])
     raw_in = out["tok_in"] * pin
     raw_out = out["tok_out"] * pout
     raw_total = raw_in + raw_out
     share_in = (raw_in / raw_total.where(raw_total > 0)).fillna(0.0)
-    out["cost_in"] = out["costo"] * share_in
-    out["cost_out"] = out["costo"] - out["cost_in"]
+    out["cost_in"] = out["cost"] * share_in
+    out["cost_out"] = out["cost"] - out["cost_in"]
     return out
 
 
 def cost_breakdown(df: pd.DataFrame) -> pd.DataFrame:
     """Total input vs output cost per model."""
     split = split_cost(df)
-    return split.groupby("modelo", sort=False)[["cost_in", "cost_out"]].sum().reset_index()
+    return split.groupby("model", sort=False)[["cost_in", "cost_out"]].sum().reset_index()
 
 
 def hardest_problems(df: pd.DataFrame, limit: int = 10) -> pd.DataFrame:
     """Problems with the lowest accuracy across all models (ties: harder first)."""
     out = (
-        df.groupby(["id", "topic", "difficulty"])["correcto"]
+        df.groupby(["id", "topic", "difficulty"])["correct"]
         .agg(accuracy="mean", models="size")
         .reset_index()
         .sort_values(["accuracy", "id"])
@@ -263,8 +267,8 @@ def hardest_problems(df: pd.DataFrame, limit: int = 10) -> pd.DataFrame:
 def headline(summary: pd.DataFrame) -> str:
     """One-sentence takeaway: which models form the frontier and which are dominated."""
     frontier = summary[summary["pareto"]].sort_values("cost_per_problem")
-    dominated = summary[~summary["pareto"]]["modelo"].tolist()
-    chain = " → ".join(frontier["modelo"])
+    dominated = summary[~summary["pareto"]]["model"].tolist()
+    chain = " → ".join(frontier["model"])
     text = f"Pareto frontier (cheapest → most accurate): **{chain}**."
     if dominated:
         text += f" Dominated (another model is cheaper *and* at least as accurate): {', '.join(dominated)}."
