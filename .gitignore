@@ -1,5 +1,14 @@
+# Secrets - never commit API keys
 .env
+.env.local
+.streamlit/secrets.toml
+
+# Python
 __pycache__/
 *.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Local eval output
 results/
-.streamlit/secrets.toml

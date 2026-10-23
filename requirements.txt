@@ -1,0 +1,6 @@
+streamlit>=1.40,<2
+plotly>=5.20,<6
+pandas>=2.0,<3
+sympy>=1.12,<2
+anthropic>=1.0,<2
+pytest>=8.0,<9
