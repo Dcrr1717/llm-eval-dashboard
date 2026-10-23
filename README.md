@@ -4,8 +4,8 @@ A Streamlit dashboard that turns raw LLM evaluation results into a **cost-vs-acc
 a hiring team, PM or engineer can read in ten seconds: which models sit on the Pareto
 frontier, which are dominated, and where each one fails.
 
-It runs out of the box on bundled synthetic data — **no API key needed** — and has an optional,
-clearly separated tab that runs a tiny live eval against the Claude API.
+It runs out of the box on bundled synthetic data — **no API key needed**. An optional tab that runs
+a tiny live eval against the Claude API is **hidden by default** and only appears when you enable it.
 
 ![Dashboard: KPI cards, the cost-vs-accuracy Pareto chart, accuracy by difficulty and topic](docs/dashboard.png)
 
@@ -19,7 +19,7 @@ clearly separated tab that runs a tiny live eval against the Claude API.
 | **Cost breakdown** | Stacked input-token vs output-token cost per model. Output (including thinking tokens) dominates, which is where cost control actually lives. |
 | **Drill-down** | Filter by model / topic / difficulty / outcome; see each problem, the expected vs. extracted answer, correctness and cost. Plus a "hardest problems" table across models. Export filtered rows as JSONL. |
 | **Upload / pick results** | Use the bundled sample or upload your own `resultados.jsonl`. |
-| **Run eval (optional, uses the API)** | Runs a few bundled math problems × selected Claude models live, grades them symbolically and appends the rows to the dashboard. |
+| **Run eval (optional, hidden by default)** | Only shown with `ENABLE_LIVE_EVAL=1`. Runs a few bundled math problems × selected Claude models live, grades them symbolically and appends the rows to the dashboard. |
 
 ## Why cost vs. accuracy matters for model selection
 
@@ -66,17 +66,20 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open http://localhost:8501. Everything except the "Run eval" tab works offline.
+Open http://localhost:8501. The dashboard works fully offline; no API controls are shown.
 
 ### Optional: live eval tab
 
+The tab is hidden unless `ENABLE_LIVE_EVAL=1` is set, so a public deployment never exposes any
+API controls. To use it locally:
+
 ```bash
-cp .env.example .env          # then put your key in .env, or simply:
+export ENABLE_LIVE_EVAL=1
 export ANTHROPIC_API_KEY=sk-ant-...
 streamlit run app.py
 ```
 
-The tab is guarded: it shows the number of calls and a typical / worst-case cost estimate, and
+Once enabled, the tab is guarded: it shows the number of calls and a typical / worst-case cost estimate, and
 the **Run eval** button stays disabled until a key is available *and* you tick "I understand
 this will spend money". You can also paste a key into the tab for the current browser session
 only (it is never stored). Details:
@@ -106,7 +109,7 @@ Offline unit tests cover data loading and validation, the Pareto frontier (inclu
 brute-force property check against the definition), per-model aggregation and Wilson intervals,
 the input/output cost split, the grader (including hostile inputs), the live-eval runner with a
 fake client (no network), chart construction, and a headless render of the whole app without an
-API key. CI runs them on every push (`.github/workflows/tests.yml`).
+API key (checking the live tab stays hidden unless enabled). CI runs them on every push (`.github/workflows/tests.yml`).
 
 ## Deploy free on Streamlit Community Cloud
 
@@ -115,18 +118,18 @@ API key. CI runs them on every push (`.github/workflows/tests.yml`).
    **Create app → Deploy a public app from GitHub**.
 3. Repository `dcrr1717/llm-eval-dashboard`, branch `main`, main file path `app.py`.
    Under **Advanced settings** pick Python 3.12.
-4. *(Optional, only for the live tab)* In **Advanced settings → Secrets**, add
-   `ANTHROPIC_API_KEY = "sk-ant-..."`. Root-level secrets are exposed as environment variables,
-   which is where the app reads the key. **Note:** on a public app this lets any visitor spend
-   your credits — for a portfolio deployment, leave it unset; visitors can paste their own key
-   in the tab instead.
+4. Leave **Secrets** empty. Without `ENABLE_LIVE_EVAL` the live-eval tab is hidden, so the public
+   app shows no API controls and can never spend credits. (If you ever want it on a deployment,
+   add `ENABLE_LIVE_EVAL = "1"` in **Advanced settings → Secrets** — root-level secrets become
+   environment variables — and preferably keep the app private, since any visitor could then
+   run evals with a key you store there.)
 5. Click **Deploy**. Dependencies install from `requirements.txt`; the light theme comes from
    `.streamlit/config.toml`.
 
 ## Project layout
 
 ```
-app.py                  Streamlit UI (dashboard, drill-down, guarded run-eval tab)
+app.py                  Streamlit UI (dashboard, drill-down, opt-in run-eval tab)
 metrics.py              loading/validation, aggregation, Pareto, Wilson CI, cost split (pure, tested)
 charts.py               Plotly figure builders
 grader.py               answer extraction + safe SymPy equivalence check
@@ -153,6 +156,9 @@ To refresh them, run the app and capture the page (any screenshot tool), saving 
 # run locally (no API key needed)
 pip install -r requirements.txt
 streamlit run app.py
+
+# optional: show the live-eval tab (spends API credits)
+ENABLE_LIVE_EVAL=1 ANTHROPIC_API_KEY=sk-ant-... streamlit run app.py
 
 # run the tests
 pip install -r requirements-dev.txt

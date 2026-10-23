@@ -38,13 +38,25 @@ def test_model_colors_follow_the_model_not_its_rank():
     assert len(set(full.values())) == 3
 
 
-def test_app_renders_without_api_key(monkeypatch):
+def test_app_renders_without_api_key_and_hides_live_tab(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ENABLE_LIVE_EVAL", raising=False)
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
     assert not at.exception
     assert "Pareto frontier" in at.markdown[0].value
+    # By default no API controls are shown at all.
+    assert len(at.tabs) == 2
+    assert not [b for b in at.button if b.label == "Run eval"]
+    assert not [t for t in at.text_input if "API key" in t.label]
+
+
+def test_live_tab_appears_only_when_enabled(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ENABLE_LIVE_EVAL", "1")
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+    assert not at.exception
     assert len(at.tabs) == 3
-    # The live-eval button stays disabled without a key and explicit confirmation.
+    # The run button stays disabled without a key and explicit confirmation.
     run = [b for b in at.button if b.label == "Run eval"][0]
     assert run.disabled
     assert "ANTHROPIC_API_KEY" not in os.environ
